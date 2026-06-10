@@ -25,19 +25,9 @@ from sklearn.metrics import (precision_score, recall_score, f1_score, fbeta_scor
 warnings.filterwarnings('ignore')
 np.random.seed(42)
 
-# ── Configuration ──────────────────────────────────────────────────────
-# Set these paths to where you downloaded the datasets.
-# Both CSV and Parquet formats are supported (Kaggle now defaults to Parquet).
-#
-# CICIDS2017: https://www.kaggle.com/datasets/cicdataset/cicids2017
-#   Download and extract all files into a cicids2017/ folder
-#
-# UNSW-NB15: https://www.kaggle.com/datasets/dhoogla/unswnb15
-#   Or official: https://research.unsw.edu.au/projects/unsw-nb15-dataset
-#   Download and extract all files into an unsw-nb15/ folder
 
-CICIDS_FOLDER = "./cicids2017/"       # folder containing the dataset files
-UNSW_FOLDER   = "./unsw-nb15/"        # folder containing the UNSW-NB15 files
+CICIDS_FOLDER = "/content/drive/MyDrive/CICIDS2017/"
+UNSW_FOLDER   = "/content/drive/MyDrive/UNSW-NB15/"
 
 # Choose which dataset to use: 'cicids' or 'unsw'
 DATASET = 'cicids'
@@ -116,7 +106,9 @@ elif DATASET == 'unsw':
 else:
     print(f"Unknown dataset '{DATASET}'. Use 'cicids' or 'unsw'.")
     sys.exit(1)
-
+if len(df) > 100000:
+    print("Sampling 100,000 rows for development...")
+    df = df.sample(n=100000, random_state=42)
 print(f"\nRaw data: {df.shape[0]} rows, {df.shape[1]} columns")
 print(f"Class distribution:\n  Normal: {(df['binary_label']==0).sum()}")
 print(f"  Attack: {(df['binary_label']==1).sum()}")
