@@ -1,72 +1,118 @@
-import os, sys, glob
+import os
+import glob
+from pathlib import Path
+
 import pandas as pd
+
+from config import CICIDS_FOLDER, UNSW_FOLDER
 
 
 def load_file(path):
-    if path.endswith('.parquet'):
+    extension = Path(path).suffix.lower()
+
+    if extension == '.parquet':
         return pd.read_parquet(path)
+
     return pd.read_csv(path, low_memory=False)
 
 
-def load_cicids(folder):
-    files = sorted(glob.glob(os.path.join(folder, "*.csv")) +
-                   glob.glob(os.path.join(folder, "*.parquet")))
+def find_data_files(folder):
+    files = sorted(
+        glob.glob(os.path.join(folder, '*.csv'))
+        + glob.glob(os.path.join(folder, '*.parquet'))
+    )
+
     if not files:
-        print(f"No files found in {folder}")
-        print("Get the dataset from kaggle: cicids2017")
-        sys.exit(1)
+        raise FileNotFoundError(
+            f'No CSV or Parquet files were found in {folder}. '
+            'Check the folder path in config.py.'
+        )
 
-    dfs = []
-    for f in files:
-        print(f"  loading {os.path.basename(f)}")
-        chunk = load_file(f)
-        chunk.columns = chunk.columns.str.strip()
-        dfs.append(chunk)
-
-    df = pd.concat(dfs, ignore_index=True)
-    # convert labels to binary: 0 = benign, 1 = attack
-    df['binary_label'] = (df['Label'] != 'BENIGN').astype(int)
-    print(f"  loaded {len(df)} rows total")
-    return df
+    return files
 
 
-def load_unsw(folder):
-    files = sorted(glob.glob(os.path.join(folder, "*.csv")) +
-                   glob.glob(os.path.join(folder, "*.parquet")))
-    if not files:
-        print(f"No files found in {folder}")
-        sys.exit(1)
+def load_dataset(dataset):
+    if dataset == 'cicids':
+        folder = CICIDS_FOLDER
 
-    dfs = []
-    for f in files:
-        print(f"  loading {os.path.basename(f)}")
-        dfs.append(load_file(f))
+    elif dataset == 'unsw':
+        folder = UNSW_FOLDER
 
-    df = pd.concat(dfs, ignore_index=True)
-    df.columns = df.columns.str.strip()
-    # unsw already has 0/1 label column
-    df.rename(columns={'label': 'binary_label'}, inplace=True)
-    print(f"  loaded {len(df)} rows total")
-    return df
-
-
-def load_dataset(name, cicids_path, unsw_path):
-    print(f"Loading {name} dataset...")
-    if name == 'cicids':
-        return load_cicids(cicids_path)
-    elif name == 'unsw':
-        return load_unsw(unsw_path)
     else:
-        print(f"unknown dataset: {name}")
-        sys.exit(1)
+        raise ValueError("DATASET must be 'cicids' or 'unsw'.")
 
+    files = find_data_files(folder)
 
-def find_datasets(cicids_path, unsw_path):
-    """check which dataset folders actually have files in them"""
-    found = []
-    for name, folder in [('cicids', cicids_path), ('unsw', unsw_path)]:
-        files = glob.glob(os.path.join(folder, "*.csv")) + \
-                glob.glob(os.path.join(folder, "*.parquet"))
-        if files:
-            found.append(name)
-    return found
+    frames = []
+
+    for file in files:
+        print('Loading:', os.path.basename(file))
+
+        part = load_file(file)
+
+        part.columns = (
+            part.columns
+            .astype(str)
+            .str.strip()
+        )
+
+        frames.append(part)
+
+    data = pd.concat(
+        frames,
+        ignore_index=True
+    )
+
+    # -------------------------------------------------
+    # Create binary labels
+    # -------------------------------------------------
+
+    if dataset == 'cicids':
+
+        label_column = next(
+            (
+                c for c in data.columns
+                if c.lower() == 'label'
+            ),
+            None
+        )
+
+        if label_column is None:
+            raise ValueError(
+                'CICIDS label column was not found.'
+            )
+
+        text_label = (
+            data[label_column]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
+
+        # BENIGN = 0
+        # Attack = 1
+        data['binary_label'] = (
+            text_label != 'BENIGN'
+        ).astype(int)
+
+    elif dataset == 'unsw':
+
+        label_column = next(
+            (
+                c for c in data.columns
+                if c.lower() == 'label'
+            ),
+            None
+        )
+
+        if label_column is None:
+            raise ValueError(
+                'UNSW label column was not found.'
+            )
+
+        data['binary_label'] = pd.to_numeric(
+            data[label_column],
+            errors='raise'
+        ).astype(int)
+
+    return data, files
