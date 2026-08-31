@@ -1,91 +1,280 @@
+import time
+
 import numpy as np
-import pandas as pd
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from sklearn.metrics import (precision_score, recall_score, f1_score,
-                             fbeta_score, confusion_matrix, roc_auc_score, roc_curve)
+import tensorflow as tf
 
-from models.train import snort_predict
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    fbeta_score,
+    confusion_matrix,
+    roc_auc_score
+)
+
+from config import (
+    QUICK_MODE,
+    EPOCHS,
+    BATCH_SIZE
+)
 
 
-def score_model(name, y_true, preds, probs):
-    tn, fp, fn, tp = confusion_matrix(y_true, preds).ravel()
+def calculate_metrics(
+    y_true,
+    predictions,
+    probabilities
+):
+
+    tn, fp, fn, tp = (
+        confusion_matrix(
+            y_true,
+            predictions,
+            labels=[0, 1]
+        ).ravel()
+    )
+
     return {
-        'Model': name,
-        'Precision': round(precision_score(y_true, preds, zero_division=0), 4),
-        'Recall': round(recall_score(y_true, preds, zero_division=0), 4),
-        'F1': round(f1_score(y_true, preds, zero_division=0), 4),
-        'F2': round(fbeta_score(y_true, preds, beta=2, zero_division=0), 4),
-        'FPR': round(fp / (fp + tn) if (fp + tn) else 0, 4),
-        'AUC': round(roc_auc_score(y_true, probs), 4),
+
+        'Accuracy':
+            accuracy_score(
+                y_true,
+                predictions
+            ),
+
+        'Precision':
+            precision_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+
+        'Recall':
+            recall_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+
+        'F1':
+            f1_score(
+                y_true,
+                predictions,
+                zero_division=0
+            ),
+
+        'F2':
+            fbeta_score(
+                y_true,
+                predictions,
+                beta=2,
+                zero_division=0
+            ),
+
+        'FPR':
+            (
+                fp / (fp + tn)
+                if fp + tn
+                else 0.0
+            ),
+
+        'FNR':
+            (
+                fn / (fn + tp)
+                if fn + tp
+                else 0.0
+            ),
+
+        'AUC':
+            roc_auc_score(
+                y_true,
+                probabilities
+            ),
+
+        'TN':
+            int(tn),
+
+        'FP':
+            int(fp),
+
+        'FN':
+            int(fn),
+
+        'TP':
+            int(tp)
     }
 
 
-def evaluate_all(models_dict, X_test, y_test, X_train, y_train):
-    rows = []
-    probs_dict = {}
+def evaluate_sklearn(
+    model,
+    X_train,
+    y_train,
+    X_test,
+    y_test
+):
 
-    for name, (model, feat_idx) in models_dict.items():
-        if model == 'snort':
-            preds, probs = snort_predict(X_test, X_train, y_train, feat_idx)
-        else:
-            preds = model.predict(X_test)
-            probs = model.predict_proba(X_test)[:, 1]
+    # -------------------------------
+    # Training time
+    # -------------------------------
 
-        rows.append(score_model(name, y_test, preds, probs))
-        probs_dict[name] = probs
+    start = time.perf_counter()
 
-    return pd.DataFrame(rows), probs_dict
+    model.fit(
+        X_train,
+        y_train
+    )
+
+    train_seconds = (
+        time.perf_counter()
+        - start
+    )
+
+    # -------------------------------
+    # Inference time
+    # -------------------------------
+
+    start = time.perf_counter()
+
+    probabilities = (
+        model.predict_proba(
+            X_test
+        )[:, 1]
+    )
+
+    predictions = (
+        probabilities >= 0.5
+    ).astype(int)
+
+    inference_seconds = (
+        time.perf_counter()
+        - start
+    )
+
+    metrics = calculate_metrics(
+        y_test,
+        predictions,
+        probabilities
+    )
+
+    return (
+        metrics,
+        train_seconds,
+        inference_seconds,
+        probabilities
+    )
 
 
-def print_results(df, tag=""):
-    header = f"Results ({tag})" if tag else "Results"
-    print(f"\n{'='*60}")
-    print(header)
-    print('='*60)
-    cols = ['Model', 'Precision', 'Recall', 'F1', 'F2', 'FPR', 'AUC']
-    print(df[cols].to_string(index=False))
-    print('='*60)
+def evaluate_keras(
+    model,
+    X_train,
+    y_train,
+    X_val,
+    y_val,
+    X_test,
+    y_test
+):
 
+    # CNN/LSTM expect:
+    # samples × features × 1
 
-def plot_roc(probs_dict, y_test, path, title="ROC Curves"):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    for name, probs in probs_dict.items():
-        fpr_v, tpr_v, _ = roc_curve(y_test, probs)
-        auc = roc_auc_score(y_test, probs)
-        ax.plot(fpr_v, tpr_v, label=f"{name} (AUC={auc:.3f})")
-    ax.plot([0, 1], [0, 1], 'k--', label='Random')
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
-    ax.set_title(title)
-    ax.legend(loc='lower right')
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(path, dpi=150)
-    plt.close()
-    print(f"saved {path}")
+    Xtr = (
+        X_train[
+            ...,
+            np.newaxis
+        ]
+    )
 
+    Xv = (
+        X_val[
+            ...,
+            np.newaxis
+        ]
+    )
 
-def comparison_plot(res_std, res_hyb, path):
-    """bar chart comparing standard vs hybrid across key metrics"""
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+    Xte = (
+        X_test[
+            ...,
+            np.newaxis
+        ]
+    )
 
-    for ax, metric, title in zip(axes,
-            ['F1', 'FPR', 'AUC'],
-            ['F1-Score', 'False Positive Rate', 'AUC-ROC']):
-        models = res_std['Model'].values
-        x = np.arange(len(models))
-        w = 0.35
-        ax.bar(x - w/2, res_std[metric].values, w, label='Standard')
-        ax.bar(x + w/2, res_hyb[metric].values, w, label='Hybrid (ours)')
-        ax.set_xticks(x)
-        ax.set_xticklabels(models, rotation=30)
-        ax.set_title(title)
-        ax.legend()
-        ax.grid(True, alpha=0.3, axis='y')
+    callback = (
+        tf.keras.callbacks
+        .EarlyStopping(
+            monitor='val_loss',
+            patience=3,
+            restore_best_weights=True
+        )
+    )
 
-    plt.tight_layout()
-    plt.savefig(path, dpi=150)
-    plt.close()
-    print(f"saved {path}")
+    # -------------------------------
+    # Training time
+    # -------------------------------
+
+    start = time.perf_counter()
+
+    model.fit(
+        Xtr,
+        np.asarray(y_train),
+
+        validation_data=(
+            Xv,
+            np.asarray(y_val)
+        ),
+
+        epochs=(
+            5
+            if QUICK_MODE
+            else EPOCHS
+        ),
+
+        batch_size=BATCH_SIZE,
+
+        callbacks=[
+            callback
+        ],
+
+        verbose=0
+    )
+
+    train_seconds = (
+        time.perf_counter()
+        - start
+    )
+
+    # -------------------------------
+    # Inference
+    # -------------------------------
+
+    start = time.perf_counter()
+
+    probabilities = (
+        model.predict(
+            Xte,
+            batch_size=BATCH_SIZE,
+            verbose=0
+        )
+        .ravel()
+    )
+
+    predictions = (
+        probabilities >= 0.5
+    ).astype(int)
+
+    inference_seconds = (
+        time.perf_counter()
+        - start
+    )
+
+    metrics = calculate_metrics(
+        y_test,
+        predictions,
+        probabilities
+    )
+
+    return (
+        metrics,
+        train_seconds,
+        inference_seconds,
+        probabilities
+    )
