@@ -2,44 +2,52 @@
 
 ## Overview
 
-This dissertation project develops and evaluates an Explainability-Guided Feature Refinement Framework (EGFRF) for AI-based Intrusion Detection Systems.
+This dissertation project develops and evaluates an **Explainability-Guided Feature Refinement Framework (EGFRF)** for AI-based Intrusion Detection Systems (IDS).
 
-The framework compares traditional signature-based intrusion detection using SNORT with multiple machine learning and deep learning models using the CICIDS2017 and UNSW-NB15 benchmark datasets.
+The framework evaluates machine learning and deep learning models using the **CICIDS2017** and **UNSW-NB15** benchmark datasets. It also compares AI-based intrusion detection with the traditional signature-based **SNORT IDS** where suitable packet capture data is available.
 
-The project also investigates whether explainability-guided feature refinement using SHAP can reduce the number of input features while maintaining strong intrusion detection performance and improving model interpretability.
+The project investigates whether **SHAP-guided feature refinement** can reduce the number of input features while maintaining strong intrusion detection performance and improving model interpretability.
+
+---
 
 ## Objectives
 
+The main objectives of this project are to:
+
 - Compare traditional SNORT-based intrusion detection with AI-based IDS models.
-- Evaluate the performance of machine learning and deep learning models for binary intrusion detection.
+- Evaluate machine learning and deep learning approaches for binary intrusion detection.
 - Reduce the number of input features using SHAP-based feature importance.
-- Compare model performance using all available numerical features against a refined set of the top 15 SHAP-ranked features.
-- Investigate False Positive Rate (FPR) and False Negative Rate (FNR).
+- Compare models trained using all numerical features with models trained using the top 15 SHAP-ranked features.
+- Evaluate False Positive Rate (FPR) and False Negative Rate (FNR).
 - Evaluate the effect of feature refinement on predictive performance and computational efficiency.
 - Improve model explainability using SHAP and LIME.
-- Evaluate model generalisation using training, validation, and testing partitions.
+- Examine model generalisation across training, validation, and testing data.
+
+---
 
 ## Datasets
 
-Two benchmark intrusion detection datasets are used:
+Two benchmark intrusion detection datasets are used.
 
 ### CICIDS2017
 
-CICIDS2017 contains benign and malicious network traffic representing several modern attack scenarios.
+CICIDS2017 contains benign and malicious network traffic representing multiple attack scenarios.
 
-For this project, the original labels are converted into a binary classification problem:
+The labels are converted into binary classes:
 
-- `0` = Benign / Normal traffic
-- `1` = Attack traffic
+- `0` = Benign / Normal
+- `1` = Attack
 
 ### UNSW-NB15
 
-UNSW-NB15 contains normal network activity together with several categories of malicious traffic.
+UNSW-NB15 contains normal network traffic together with different categories of malicious traffic.
 
 The dataset is also treated as a binary classification problem:
 
-- `0` = Normal traffic
-- `1` = Attack traffic
+- `0` = Normal
+- `1` = Attack
+
+---
 
 ## Data Preprocessing
 
@@ -50,11 +58,13 @@ The preprocessing pipeline includes:
 - Removal of identifier, label, and non-numerical columns.
 - Conversion of infinite values into missing values.
 - Removal of duplicate numerical feature vectors before dataset splitting.
-- Stratified 70% training, 15% validation, and 15% testing split.
+- Stratified **70% training, 15% validation, and 15% testing** split.
 - Median imputation for missing values.
-- Standardisation using `StandardScaler`.
+- Feature standardisation using `StandardScaler`.
 - Fitting the imputer and scaler using the training data only to prevent data leakage.
 - Verification that identical feature vectors do not overlap between the training and testing partitions.
+
+---
 
 ## Models
 
@@ -66,24 +76,28 @@ The following AI models are evaluated:
 - Convolutional Neural Network (CNN)
 - Long Short-Term Memory (LSTM)
 
-A traditional SNORT signature-based IDS is also used as a baseline where suitable packet capture data is available.
+A traditional **SNORT signature-based IDS** is also used as a baseline where suitable packet capture data is available.
+
+---
 
 ## Explainability-Guided Feature Refinement
 
 SHAP is used to estimate global feature importance.
 
-An Extra Trees model is used as the SHAP feature-selection model, and features are ranked according to their mean absolute SHAP values.
+An **Extra Trees classifier** is used as the SHAP feature-selection model. Features are ranked according to their mean absolute SHAP values.
 
 The experiment compares two feature configurations:
 
-- **All Features**
-- **SHAP Refined Features — Top 15 Features**
+1. **All Features**
+2. **SHAP Refined Features — Top 15 Features**
 
-The models are retrained using the refined feature set to evaluate whether comparable detection performance can be achieved with fewer input features.
+The models are retrained using the refined feature set to determine whether strong intrusion detection performance can be maintained using fewer input features.
+
+---
 
 ## Explainability
 
-Two explainability techniques are used:
+Two explainable AI techniques are used.
 
 ### SHAP
 
@@ -91,29 +105,37 @@ SHAP provides global feature-level explanations and is used to rank the most inf
 
 ### LIME
 
-LIME is used to generate local explanations for individual attack predictions, showing which refined features contributed to a particular classification.
+LIME provides local explanations for individual predictions and is used to demonstrate which refined features contributed to the classification of a specific network record.
+
+---
 
 ## Experimental Setup
 
 The main experiment is repeated using five random seeds:
 
-- 42
-- 43
-- 44
-- 45
-- 46
+- `42`
+- `43`
+- `44`
+- `45`
+- `46`
 
-Results are collected independently for each seed and summarised statistically.
+Results from the repeated experiments are used to calculate the mean, standard deviation, and 95% confidence intervals.
 
-The deep learning models use early stopping to reduce unnecessary training and limit overfitting.
+The CNN and LSTM models use early stopping to reduce unnecessary training and limit overfitting.
 
-An additional seed-42 validation experiment evaluates each model separately across:
+### Seed-42 Partition Analysis
+
+An additional experiment using **seed 42** evaluates model performance separately across:
 
 - Training data
 - Validation data
 - Testing data
 
-This analysis is used to examine model generalisation and identify potential differences between training and unseen-data performance.
+ROC-AUC is calculated independently for each partition.
+
+This additional analysis is used to examine model generalisation and identify differences between performance on training data and unseen validation/testing data.
+
+---
 
 ## Evaluation Metrics
 
@@ -126,16 +148,18 @@ The models are evaluated using:
 - F2 Score
 - False Positive Rate (FPR)
 - False Negative Rate (FNR)
-- Receiver Operating Characteristic Area Under the Curve (ROC-AUC)
+- ROC-AUC
 - Training Time
 - Inference Time
 
-Confusion-matrix values are also recorded:
+The following confusion-matrix values are also recorded:
 
 - True Positives (TP)
 - True Negatives (TN)
 - False Positives (FP)
 - False Negatives (FN)
+
+---
 
 ## Statistical Evaluation
 
@@ -145,16 +169,60 @@ For the repeated experiments, the framework calculates:
 - Standard deviation
 - 95% confidence intervals
 
-An EGFRF ablation comparison is also performed to compare the change between all-feature and SHAP-refined models in terms of:
+An EGFRF ablation comparison is also performed between the **All Features** and **SHAP Refined** configurations.
+
+The comparison examines changes in:
 
 - Accuracy
-- F1
-- F2
+- F1 Score
+- F2 Score
 - FPR
 - FNR
 - ROC-AUC
 - Training time
 - Inference time
+
+---
+
+## Experimental Pipeline
+
+```text
+Dataset Loading
+       ↓
+Duplicate Removal and Data Cleaning
+       ↓
+Numerical Feature Preparation
+       ↓
+70% / 15% / 15% Stratified Split
+       ↓
+Median Imputation
+       ↓
+Standardisation
+       ↓
+Data Leakage Verification
+       ↓
+All-Feature Model Training
+       ↓
+SHAP Feature Ranking
+       ↓
+Top-15 Feature Refinement
+       ↓
+Refined Model Training
+       ↓
+Five-Seed Evaluation (42–46)
+       ↓
+Statistical Evaluation
+       ↓
+EGFRF Ablation Analysis
+       ↓
+ROC-AUC Evaluation
+       ↓
+Seed-42 Train / Validation / Test AUC Analysis
+       ↓
+LIME Local Explanation
+```
+
+---
 
 ## Repository Structure
 
@@ -168,24 +236,84 @@ AI-IDS-Dissertation/
 │       ├── main.py
 │       │
 │       ├── data/
+│       │   ├── __init__.py
 │       │   ├── loader.py
 │       │   └── preprocessing.py
 │       │
 │       ├── features/
+│       │   ├── __init__.py
 │       │   └── shap_selection.py
 │       │
 │       ├── models/
+│       │   ├── __init__.py
 │       │   └── classifiers.py
 │       │
 │       ├── evaluation/
+│       │   ├── __init__.py
 │       │   ├── metrics.py
 │       │   ├── plots.py
 │       │   └── partition_auc.py
 │       │
 │       ├── explainability/
+│       │   ├── __init__.py
 │       │   └── lime_explainer.py
 │       │
 │       └── utils/
+│           ├── __init__.py
 │           └── reproducibility.py
 │
 └── README.md
+```
+
+---
+
+## Technologies
+
+The implementation uses:
+
+- Python
+- TensorFlow / Keras
+- Scikit-learn
+- Pandas
+- NumPy
+- Matplotlib
+- SHAP
+- LIME
+- SNORT
+
+---
+
+## Reproducibility
+
+The framework records experimental information including:
+
+- Dataset used
+- Source data files
+- Number of records
+- Duplicate removal statistics
+- Training, validation, and testing sample counts
+- Train-test identical feature overlap
+- Number of features before and after refinement
+- Feature reduction percentage
+- Random seeds
+- Python and library versions
+- Execution platform
+- GPU availability
+
+Experimental results are exported to CSV and JSON files to support reproducibility and further analysis.
+
+---
+
+## Author
+
+**Noor Jassim Al-Suwaidi**
+
+MSc Cyber Security Dissertation
+
+---
+
+## Status
+
+**Dissertation implementation completed.**
+
+This repository contains the modular implementation of the experimental framework used for the dissertation.
