@@ -1,99 +1,301 @@
+import os
+
 import numpy as np
 import pandas as pd
-from sklearn.feature_selection import RFE, mutual_info_classif
-from sklearn.ensemble import RandomForestClassifier
+import shap
+
+from sklearn.ensemble import ExtraTreesClassifier
+
+from config import (
+    TOP_FEATURES,
+    RESULTS_FOLDER,
+    DATASET
+)
 
 
-def mi_ranking(X, y, names, random_state=42):
-    """rank features by mutual information"""
-    mi = mutual_info_classif(X, y, random_state=random_state, n_neighbors=5)
-    ranking = pd.Series(mi, index=names).sort_values(ascending=False)
-    return ranking
+def select_shap_features(
+    X_train_all,
+    X_val_all,
+    X_test_all,
+    y_train,
+    all_feature_names
+):
 
+    print(
+        "Starting SHAP feature selection..."
+    )
 
-def drop_correlated(X, names, threshold=0.95):
-    """if two features correlate above threshold, drop the one with lower variance"""
-    corr = np.corrcoef(X, rowvar=False)
-    n = len(names)
-    to_drop = set()
+    # Faster Extra Trees selector
+    selector_model = (
+        ExtraTreesClassifier(
+            n_estimators=60,
+            max_depth=15,
+            random_state=42,
+            n_jobs=-1,
+            class_weight="balanced"
+        )
+    )
 
-    for i in range(n):
-        if i in to_drop:
-            continue
-        for j in range(i+1, n):
-            if j in to_drop:
-                continue
-            if abs(corr[i, j]) > threshold:
-                # keep whichever has higher variance
-                if np.var(X[:, i]) >= np.var(X[:, j]):
-                    to_drop.add(j)
-                else:
-                    to_drop.add(i)
+    print(
+        "Training Extra Trees..."
+    )
 
-    keep = [i for i in range(n) if i not in to_drop]
-    kept_names = [names[i] for i in keep]
-    print(f"  correlation filter: dropped {len(to_drop)}, kept {len(kept_names)}")
-    return X[:, keep], kept_names, keep
+    selector_model.fit(
+        X_train_all,
+        np.asarray(
+            y_train
+        ).ravel()
+    )
 
+    print(
+        "Extra Trees training completed."
+    )
 
-def run_rfe(X, y, names, n_select=15, random_state=42):
-    n_select = min(n_select, len(names))
-    print(f"  RFE: selecting {n_select} from {len(names)} features")
-    rf = RandomForestClassifier(n_estimators=50, random_state=random_state, n_jobs=-1)
-    selector = RFE(rf, n_features_to_select=n_select, step=3)
-    selector.fit(X, y)
+    # -------------------------------------------------
+    # Use 300 training records for SHAP
+    # -------------------------------------------------
 
-    selected = [f for f, s in zip(names, selector.support_) if s]
-    X_out = X[:, selector.support_]
-    return X_out, selected, selector
+    sample_size = min(
+        300,
+        len(X_train_all)
+    )
 
+    rng = np.random.default_rng(
+        42
+    )
 
-def standard_selection(X, y, names, n_select=15, random_state=42):
-    """baseline approach: MI ranking then RFE"""
-    print("\nStandard feature selection...")
+    sample_indices = rng.choice(
+        len(X_train_all),
+        size=sample_size,
+        replace=False
+    )
 
-    ranking = mi_ranking(X, y, names, random_state)
-    print("  top 10 by MI:")
-    for f, s in ranking.head(10).items():
-        print(f"    {f}: {s:.4f}")
+    background_sample = (
+        X_train_all[
+            sample_indices
+        ]
+    )
 
-    X_sel, sel_names, rfe = run_rfe(X, y, names, n_select, random_state)
-    print(f"  selected: {sel_names}")
-    return X_sel, sel_names, ranking, rfe.support_
+    print(
+        f"Calculating SHAP values "
+        f"using {sample_size} records..."
+    )
 
+    # -------------------------------------------------
+    # TreeSHAP
+    # -------------------------------------------------
 
-def hybrid_selection(X, y, names, corr_thresh=0.95, n_select=15, random_state=42):
-    """
-    proposed hybrid approach (our contribution):
-    1) remove redundant features via correlation filtering
-    2) rank whats left by mutual information
-    3) run RFE on the filtered set
+    selector_explainer = (
+        shap.TreeExplainer(
+            selector_model
+        )
+    )
 
-    most IDS papers just use one method. combining all three should
-    give a more robust feature set and reduce overfitting since we
-    eliminate correlated features before the model even sees them.
-    """
-    print("\nHybrid feature selection (contribution)...")
+    shap_values = (
+        selector_explainer
+        .shap_values(
+            background_sample,
+            check_additivity=False
+        )
+    )
 
-    # step 1 - drop correlated
-    X_filt, filt_names, kept_idx = drop_correlated(X, names, corr_thresh)
+    # -------------------------------------------------
+    # Handle SHAP output formats
+    # -------------------------------------------------
 
-    # step 2 - MI ranking on whats left
-    ranking = mi_ranking(X_filt, y, filt_names, random_state)
-    print("  top 10 after filtering:")
-    for f, s in ranking.head(10).items():
-        print(f"    {f}: {s:.4f}")
+    if isinstance(
+        shap_values,
+        list
+    ):
 
-    # step 3 - RFE on filtered set
-    n = min(n_select, len(filt_names))
-    X_sel, sel_names, rfe = run_rfe(X_filt, y, filt_names, n, random_state)
-    print(f"  final features: {sel_names}")
+        attack_shap = np.asarray(
+            shap_values[-1]
+        )
 
-    # map back to original feature indices
-    sel_in_filt = [i for i, s in enumerate(rfe.support_) if s]
-    original_idx = [kept_idx[i] for i in sel_in_filt]
-    full_mask = np.zeros(len(names), dtype=bool)
-    for idx in original_idx:
-        full_mask[idx] = True
+    else:
 
-    return X_sel, sel_names, ranking, full_mask
+        attack_shap = np.asarray(
+            shap_values
+        )
+
+        # New SHAP versions may return:
+        #
+        # records × features × classes
+        if attack_shap.ndim == 3:
+
+            attack_shap = (
+                attack_shap[
+                    :,
+                    :,
+                    -1
+                ]
+            )
+
+    # -------------------------------------------------
+    # Global feature importance
+    # -------------------------------------------------
+
+    shap_importance = (
+        np.mean(
+            np.abs(
+                attack_shap
+            ),
+            axis=0
+        )
+        .reshape(-1)
+    )
+
+    # Safety check
+    if (
+        len(shap_importance)
+        !=
+        len(all_feature_names)
+    ):
+
+        raise ValueError(
+            f"SHAP produced "
+            f"{len(shap_importance)} "
+            f"importance values, "
+            f"but the dataset has "
+            f"{len(all_feature_names)} "
+            f"features."
+        )
+
+    # -------------------------------------------------
+    # Rank features
+    # -------------------------------------------------
+
+    ranking = pd.DataFrame({
+        "Feature":
+            all_feature_names,
+
+        "MeanAbsoluteSHAP":
+            shap_importance
+    })
+
+    ranking = (
+        ranking
+        .sort_values(
+            "MeanAbsoluteSHAP",
+            ascending=False
+        )
+        .reset_index(drop=True)
+    )
+
+    n_refined = min(
+        TOP_FEATURES,
+        len(all_feature_names)
+    )
+
+    selected_features = (
+        ranking
+        .head(n_refined)[
+            "Feature"
+        ]
+        .tolist()
+    )
+
+    selected_indices = [
+        all_feature_names.index(
+            feature
+        )
+        for feature
+        in selected_features
+    ]
+
+    # -------------------------------------------------
+    # Create refined datasets
+    # -------------------------------------------------
+
+    X_train_refined = (
+        X_train_all[
+            :,
+            selected_indices
+        ]
+    )
+
+    X_val_refined = (
+        X_val_all[
+            :,
+            selected_indices
+        ]
+    )
+
+    X_test_refined = (
+        X_test_all[
+            :,
+            selected_indices
+        ]
+    )
+
+    reduction_percentage = (
+        100
+        *
+        (
+            1
+            -
+            n_refined
+            /
+            len(all_feature_names)
+        )
+    )
+
+    print(
+        "\nSelected SHAP features:"
+    )
+
+    print(
+        ranking
+        .head(n_refined)
+        .to_string(
+            index=False
+        )
+    )
+
+    print(
+        f"\nFeature count: "
+        f"{len(all_feature_names)} "
+        f"→ {n_refined}"
+    )
+
+    print(
+        f"Feature reduction: "
+        f"{reduction_percentage:.2f}%"
+    )
+
+    # -------------------------------------------------
+    # Save feature ranking
+    # -------------------------------------------------
+
+    ranking.to_csv(
+        os.path.join(
+            RESULTS_FOLDER,
+            f"{DATASET}_shap_feature_ranking.csv"
+        ),
+        index=False
+    )
+
+    print(
+        "\nSHAP feature selection "
+        "completed successfully."
+    )
+
+    return {
+        'ranking':
+            ranking,
+
+        'selected_features':
+            selected_features,
+
+        'X_train_refined':
+            X_train_refined,
+
+        'X_val_refined':
+            X_val_refined,
+
+        'X_test_refined':
+            X_test_refined,
+
+        'reduction_percentage':
+            reduction_percentage
+    }
