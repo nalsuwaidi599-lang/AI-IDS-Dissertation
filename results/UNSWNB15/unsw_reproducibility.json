@@ -1,0 +1,36 @@
+{
+  "dataset": "unsw",
+  "source_files": [
+    "UNSW_NB15_testing-set.parquet",
+    "UNSW_NB15_training-set.parquet"
+  ],
+  "raw_rows": 257673,
+  "rows_after_exact_duplicate_removal_before_sampling": 145222,
+  "exact_duplicates_removed": 112451,
+  "duplicate_numeric_feature_vectors_removed": 4718,
+  "records_used": 100000,
+  "train_records": 66697,
+  "validation_records": 14292,
+  "test_records": 14293,
+  "train_test_identical_feature_overlap": 0,
+  "all_feature_count": 31,
+  "refined_feature_count": 15,
+  "feature_reduction_percent": 51.61290322580645,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "python": "3.12.13 (main, Mar  4 2026, 09:23:07) [GCC 11.4.0]",
+  "numpy": "2.0.2",
+  "pandas": "2.2.2",
+  "scikit_learn": "1.6.1",
+  "tensorflow": "2.20.0",
+  "shap": "0.52.0",
+  "platform": "Linux-6.6.122+-x86_64-with-glibc2.35",
+  "gpu": [
+    "PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')"
+  ]
+}
