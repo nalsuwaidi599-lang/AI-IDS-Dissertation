@@ -46,6 +46,10 @@ from evaluation.plots import (
     plot_roc_curves
 )
 
+from evaluation.partition_auc import (
+    run_partition_auc_analysis
+)
+
 from explainability.lime_explainer import (
     generate_lime_explanation
 )
@@ -136,6 +140,7 @@ def main():
         )
     )
 
+
     # =================================================
     # 1. LOAD DATASET
     # =================================================
@@ -174,6 +179,7 @@ def main():
             }
         )
     )
+
 
     # =================================================
     # 2. PREPROCESS
@@ -227,6 +233,7 @@ def main():
         ]
     )
 
+
     # =================================================
     # 3. SHAP FEATURE REFINEMENT
     # =================================================
@@ -273,6 +280,7 @@ def main():
             'reduction_percentage'
         ]
     )
+
 
     # =================================================
     # 4. TRAIN + EVALUATE MODELS
@@ -329,7 +337,7 @@ def main():
             set_seed(seed)
 
             # -----------------------------------------
-            # Classical / FFNN models
+            # Classical models + FFNN
             # -----------------------------------------
 
             sklearn_models = {
@@ -415,8 +423,9 @@ def main():
                         )
                     ] = probabilities
 
+
             # -----------------------------------------
-            # CNN and LSTM
+            # CNN + LSTM
             # -----------------------------------------
 
             deep_models = [
@@ -507,6 +516,7 @@ def main():
                         )
                     ] = probabilities
 
+
     # =================================================
     # 5. SAVE INDIVIDUAL RUN RESULTS
     # =================================================
@@ -539,6 +549,7 @@ def main():
     print(
         'Individual-run results saved.'
     )
+
 
     # =================================================
     # 6. STATISTICAL SUMMARY
@@ -674,6 +685,7 @@ def main():
 
         index=False
     )
+
 
     # =================================================
     # 7. EGFRF ABLATION COMPARISON
@@ -843,6 +855,7 @@ def main():
         index=False
     )
 
+
     # =================================================
     # 8. ROC CURVES
     # =================================================
@@ -851,6 +864,7 @@ def main():
         roc_store,
         y_test
     )
+
 
     # =================================================
     # 9. REPRODUCIBILITY RECORD
@@ -898,7 +912,9 @@ def main():
         'records_used':
             int(
                 len(
-                    prep['df']
+                    prep[
+                        'df'
+                    ]
                 )
             ),
 
@@ -1009,14 +1025,41 @@ def main():
         )
 
     print(
+        '\nREPRODUCIBILITY RECORD'
+    )
+
+    print(
         json.dumps(
             reproducibility,
             indent=2
         )
     )
 
+
     # =================================================
-    # 10. LIME
+    # 10. SEED-42 TRAIN / VALIDATION / TEST AUC CHECK
+    # =================================================
+
+    partition_auc_results = (
+        run_partition_auc_analysis(
+
+            X_train_all,
+            X_val_all,
+            X_test_all,
+
+            X_train_refined,
+            X_val_refined,
+            X_test_refined,
+
+            y_train,
+            y_val,
+            y_test
+        )
+    )
+
+
+    # =================================================
+    # 11. LIME LOCAL EXPLANATION
     # =================================================
 
     generate_lime_explanation(
@@ -1030,8 +1073,25 @@ def main():
         selected_features
     )
 
+
+    # =================================================
+    # FINISHED
+    # =================================================
+
     print(
-        '\nAll results are saved in:',
+        '\n========================================'
+    )
+
+    print(
+        'EXPERIMENT COMPLETED'
+    )
+
+    print(
+        '========================================'
+    )
+
+    print(
+        'All results are saved in:',
         RESULTS_FOLDER
     )
 
